@@ -6,9 +6,9 @@ module AST where
 import Control.Applicative ((<$>), (<*>), pure)
 import Data.Aeson
 import Data.Aeson.Types
-import Data.Map (Map)
+import qualified Data.HashMap.Strict as HM
 import qualified Data.Vector as V
-import Data.Text
+import qualified Data.Text as T
 import qualified Data.Text.Lazy.IO as T
 import qualified Data.Text.Lazy.Encoding as T
 
@@ -31,25 +31,33 @@ type Controller = String
 
 -------------- CHANGING --------------
 
--- getMethods :: Object -> Methods
+type TMethodValue = HM.HashMap String Value
 
--- IMPORTANTE GIAN: ANTES DE CAMBIAR NADA, PUSHEA ESTO QUE VA BIEN!
+-- temporary storing a method with all the relevant information (for a route)
+type TMethods = HM.HashMap String TMethodValue
 
-newtype TMethods = TMethods (Map Method Object)
-  deriving (Show)
+-- instance FromJSON TMethods where
+--   parseJSON val = TMethods <$> parseJSON val 
+  --  -> (<$>) :: Functor f => (a -> b) -> f a -> f b
 
-instance FromJSONKey Method where
-  fromJSONKey = FromJSONKeyTextParser $ pure . mkMethod
-    
-instance FromJSON TMethods where
-  parseJSON val = TMethods <$> parseJSON val
+-- given a TMethods, retrieves the controller name (if any)
+-- getController :: String -> TMethods -> Maybe Value
+-- getController k (TMethods obj) = HM.lookup "controller" $ case HM.lookup k obj of 
+--   Just obj -> obj
+--   _        -> HM.empty
+
+-- given a TMethods, retrieves the middleware list (if any)
+-- getMiddlewares :: String -> TMethods -> Maybe Value
+-- getMiddlewares k (TMethods obj) = HM.lookup "middlewares" $ case HM.lookup k obj of 
+--   Just obj -> obj
+--   _        -> HM.empty
+  
 
 -- data Route = R String Method Middlewares Controller [Route]
 data Route = R String Method Middlewares Controller [Route]
   deriving (Show)
 
 type Routes = [Route]
-
 
 data Definition = Definition 
   { 
@@ -73,7 +81,7 @@ instance ToJSON Method where
   toJSON Put = "PUT"
   toJSON Delete = "DELETE"
 
-mkMethod :: Text -> Method
+mkMethod :: T.Text -> Method
 mkMethod "GET"    = Get
 mkMethod "POST"   = Post
 mkMethod "PUT"    = Put

@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
--- {-# LANGUAGE DeriveGeneric #-}
 
 module AST where
 
@@ -12,65 +11,74 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy.IO as T
 import qualified Data.Text.Lazy.Encoding as T
 
--- import Text.Read (readMaybe)
--- import GHC.Generics
-
+-- AST returned by the parser
 type Model = String
 
-type Models = [Model]
+type Models = Maybe [Model]
 
 type Middleware = String
 
-type Middlewares = [Middleware]
+type Middlewares = Maybe [Middleware]
 
 data Method = Get | Post | Put | Delete
   deriving (Show, Ord, Eq)
 
 type Controller = String
 
-
--------------- CHANGING --------------
-
-type TMethodValue = HM.HashMap String Value
-
--- temporary storing a method with all the relevant information (for a route)
-type TMethods = HM.HashMap String TMethodValue
-
--- instance FromJSON TMethods where
---   parseJSON val = TMethods <$> parseJSON val 
-  --  -> (<$>) :: Functor f => (a -> b) -> f a -> f b
-
--- given a TMethods, retrieves the controller name (if any)
--- getController :: String -> TMethods -> Maybe Value
--- getController k (TMethods obj) = HM.lookup "controller" $ case HM.lookup k obj of 
---   Just obj -> obj
---   _        -> HM.empty
-
--- given a TMethods, retrieves the middleware list (if any)
--- getMiddlewares :: String -> TMethods -> Maybe Value
--- getMiddlewares k (TMethods obj) = HM.lookup "middlewares" $ case HM.lookup k obj of 
---   Just obj -> obj
---   _        -> HM.empty
-  
-
--- data Route = R String Method Middlewares Controller [Route]
-data Route = R String Method Middlewares Controller [Route]
+data Route = R String Method Middlewares Controller Routes
   deriving (Show)
 
 type Routes = [Route]
 
+data Error = InvalidMethod Method
+           | DuplicatedModelError Model
+           | DuplicatedMiddlewareError Middleware
+           | NonDeclaredMiddlewareError Middleware
+           | DuplicatedRouteError Route
+  deriving Show
+
+-- Types used by Aeson for the JSON parsing
+data TMethodValue = TMethodValue { controller :: String, middleware :: Maybe [String] }
+  deriving Show
+
+instance FromJSON TMethodValue where
+  parseJSON = withObject "Options for the method" $ \o -> do 
+    controller <- o .: "controller"
+    middleware <- o .:? "middleware"
+    return $ TMethodValue { controller = controller, middleware = middleware }
+
+type TMethods = HM.HashMap String TMethodValue
+
+data TRoute = TRoute { methods :: Maybe TMethods, routes :: TRoutes }
+  deriving Show
+
+instance FromJSON TRoute where
+  parseJSON = withObject "Route definition" $ \o -> do
+    methods <- o .:? "methods"
+    routes <- o .:? "routes"
+    return $ TRoute { methods = methods, routes = routes }
+
+type TRoutes = Maybe (HM.HashMap String TRoute)  
+
 data Definition = Definition 
   { 
     models :: Models
-  , middlewares :: Maybe Middlewares
-  , method :: Method
-  -- , routes :: Routes
-  , methods :: TMethods
+  , middlewares :: Middlewares
+  , routing :: TRoutes
   }
   deriving (Show)
 
---------------------------------------
+instance FromJSON Definition where
+  parseJSON = withObject "Definition" $ \obj -> do
+    models <- obj .:? "models"
+    middlewares <- obj .:? "middlewares"
+    routing <- obj .:? "routing"
+    return (Definition { models = models, middlewares = middlewares, routing = routing })
 
+
+
+
+-- TO-DO: Clean this
 instance FromJSON Method where
   parseJSON (String s) =  pure $ mkMethod s
   parseJSON _ = fail "Failed to parse Method object"
@@ -87,26 +95,3 @@ mkMethod "POST"   = Post
 mkMethod "PUT"    = Put
 mkMethod "DELETE" = Delete
 mkMethod s        = error ("Invalid method provided" ++ show s)
-
--- parseMiddlewares :: Value -> Parser Middlewares
--- parseMiddlewares = withArray "array of middlewares" $ \arr ->
---   mapM parseJSON (V.toList arr)
-
--- parseModels :: Value -> Parser Models
--- parseModels = withArray "array of models" $ \arr ->
---   mapM parseJSON (V.toList arr)
-
-instance FromJSON Definition where
-  parseJSON = withObject "Definition" $ \obj -> do
-    models <- obj .: "models"
-    middlewares <- obj .:? "middlewares"
-    method <- obj .: "method"
-    methods <- obj .: "methods"
-    return (Definition { models = models, middlewares = middlewares, method = method, methods = methods })
-
-data Error = InvalidMethod Method
-           | DuplicatedModelError Model
-           | DuplicatedMiddlewareError Middleware
-           | NonDeclaredMiddlewareError Middleware
-           | DuplicatedRouteError Route
-  deriving Show

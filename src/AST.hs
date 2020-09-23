@@ -30,7 +30,9 @@ data Route = R String Method Middlewares Controller Routes
 
 type Routes = [Route]
 
-data Error = InvalidMethod Method
+data Error = InvalidJsonError String
+           | SpaceInModelError Model
+           | InvalidMethodError Method
            | DuplicatedModelError Model
            | DuplicatedMiddlewareError Middleware
            | NonDeclaredMiddlewareError Middleware
@@ -77,8 +79,9 @@ instance FromJSON Definition where
 
 
 
-
+--------------------
 -- TO-DO: Clean this
+--------------------
 instance FromJSON Method where
   parseJSON (String s) =  pure $ mkMethod s
   parseJSON _ = fail "Failed to parse Method object"

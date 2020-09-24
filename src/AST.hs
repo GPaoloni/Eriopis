@@ -32,9 +32,10 @@ type Routes = [Route]
 
 data Error = InvalidJsonError String
            | SpaceInModelError Model
-           | InvalidMethodError Method
            | DuplicatedModelError Model
+           | SpaceInMiddlewareError Middleware
            | DuplicatedMiddlewareError Middleware
+           | InvalidMethodError Method
            | NonDeclaredMiddlewareError Middleware
            | DuplicatedRouteError Route
   deriving Show

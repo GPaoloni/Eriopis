@@ -35,9 +35,9 @@ data Error = InvalidJsonError String
            | DuplicatedModelError Model
            | SpaceInMiddlewareError Middleware
            | DuplicatedMiddlewareError Middleware
-           | InvalidMethodError Method
-           | NonDeclaredMiddlewareError Middleware
-           | DuplicatedRouteError Route
+           | SpaceInRouteError String
+           | InvalidMethodError String
+           | NonDeclaredMiddlewareError String
   deriving Show
 
 -- Types used by Aeson for the JSON parsing

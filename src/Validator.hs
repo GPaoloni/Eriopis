@@ -58,6 +58,7 @@ middlewaresParser def = do
   checkRepeated DuplicatedMiddlewareError ms
 
 -- Transform a routing object of type TRoutes to a list, to make easier iterating in next steps
+transformRouting :: String -> TRoutes -> [(String, (String, TMethodValue))]
 transformRouting _      Nothing  = []
 transformRouting prefix (Just o) = foldrWithKey (transformRouting' prefix) [] o
 transformRouting' prefix k v xs =
@@ -67,25 +68,48 @@ transformRouting' prefix k v xs =
 buildMethodList Nothing  = []
 buildMethodList (Just o) = toList o
 
-getRoute :: (String, (String, TMethodValue)) -> String
+getRoute :: (String, (a, TMethodValue)) -> String
 getRoute = fst
 
-getMiddleware :: (String, (String, TMethodValue)) -> Maybe [String]
-getMiddleware = middleware . snd . snd
+getMethod :: (String, (a, TMethodValue)) -> a
+getMethod = fst . snd
+
+getMethodValue :: (String, (a, TMethodValue)) -> TMethodValue
+getMethodValue = snd . snd
+
+methodOrError s = case s of
+  "GET"    -> Just Get
+  "POST"   -> Just Post
+  "PUT"    -> Just Put
+  "DELETE" -> Just Delete
+  _        -> Nothing
 
 -- routingParser :: Definition -> MErr ()
 routingParser def = do
   let mw = concat $ maybeToList $ middlewares def
-      r  = transformRouting "" $ routing def
-  validateRoutes r
-  validateMiddlewares mw r
-  -- validateMethods r
-  return ()
+      rs  = transformRouting "" $ routing def
+  validateRoutes rs
+  validateMiddlewares mw rs
+  rs' <- transformValidMethods rs
+  mapM (pure . makeRoute) rs'
     where
       validateRoutes = mapM_ (throwIfSpace SpaceInRouteError . fst)
       validateMiddlewares mw = mapM_ (validateMiddlewares' mw)
-      validateMiddlewares' mw r = mapM_ (mapM_ (throwIfInvalidMw mw $ getRoute r)) (getMiddleware r)
+      validateMiddlewares' mw r = mapM_ (mapM_ (throwIfInvalidMw mw $ getRoute r)) (middleware $ getMethodValue r)
       throwIfInvalidMw mw r x = when (x `notElem` mw) $ throw $ NonDeclaredMiddlewareError (x ++ " in route " ++ r)
+      transformValidMethods = mapM transformValidMethod
+      transformValidMethod rs = 
+        let m = getMethod rs
+        in case methodOrError m of
+          Just m' -> return (getRoute rs, (m', getMethodValue rs))
+          _      -> throw $ InvalidMethodError (m ++ "in route" ++ getRoute rs)
+
+makeRoute :: (String, (Method, TMethodValue)) -> Route
+makeRoute rs = let name   = getRoute rs
+                   method = getMethod rs 
+                   mw     = concat $ maybeToList $ middleware $ getMethodValue rs
+                   ctrl   = controller $ getMethodValue rs
+               in R name method mw ctrl
 
 -- [
 --   ("/some",("POST",TMethodValue {controller = "createOne", middleware = Just ["auth","isAdmin"]})),
@@ -93,10 +117,10 @@ routingParser def = do
 --   ("/some/help",("GET",TMethodValue {controller = "help", middleware = Nothing}))
 -- ]
 
-test :: Either String Definition -> MErr Definition
+-- test :: Either String Definition -> MErr Definition
 test d = do 
   def <- definitionParser d
   modelsParser def
   middlewaresParser def
   routingParser def
-  return def
+  -- return def

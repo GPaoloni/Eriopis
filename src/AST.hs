@@ -14,18 +14,18 @@ import qualified Data.Text.Lazy.Encoding as T
 -- AST returned by the parser
 type Model = String
 
-type Models = Maybe [Model]
+type Models = [Model]
 
 type Middleware = String
 
-type Middlewares = Maybe [Middleware]
+type Middlewares = [Middleware]
 
 data Method = Get | Post | Put | Delete
   deriving (Show, Ord, Eq)
 
 type Controller = String
 
-data Route = R String Method Middlewares Controller Routes
+data Route = R String Method Middlewares Controller
   deriving (Show)
 
 type Routes = [Route]
@@ -65,8 +65,8 @@ type TRoutes = Maybe (HM.HashMap String TRoute)
 
 data Definition = Definition 
   { 
-    models :: Models
-  , middlewares :: Middlewares
+    models :: Maybe Models
+  , middlewares :: Maybe Middlewares
   , routing :: TRoutes
   }
   deriving (Show)

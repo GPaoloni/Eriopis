@@ -83,12 +83,11 @@ maybeGetMethod s = case s of
   "DELETE" -> Just Delete
   _        -> Nothing
 
-makeRoute :: (String, Method, TMethodValue) -> Route
-makeRoute rs = let name   = getRoute rs
-                   method = getMethod rs
-                   mw     = concat $ maybeToList $ middleware $ getMethodValue rs
-                   ctrl   = controller $ getMethodValue rs
-               in R name method mw ctrl
+makeRoute :: (RouteName, Method, TMethodValue) -> Route
+makeRoute (routeName, method, value) = 
+  let mw   = concat $ maybeToList $ middleware value
+      ctrl = controller value
+  in R routeName method mw ctrl
 
 routingParser :: Definition -> MErr Routes
 routingParser def = do

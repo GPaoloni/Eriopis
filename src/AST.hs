@@ -25,7 +25,9 @@ data Method = Get | Post | Put | Delete
 
 type Controller = String
 
-data Route = R String Method Middlewares Controller
+type RouteName = String
+
+data Route = R RouteName Method Middlewares Controller
   deriving (Show)
 
 type Routes = [Route]

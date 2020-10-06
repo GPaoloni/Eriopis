@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
 
 module Validator where
 
@@ -10,7 +9,6 @@ import Data.Maybe (maybeToList)
 import Control.Monad (mapM, when)
 import AST
 import MonadError
--- import Data.Aeson
 
 findRepeated :: (Ord a) => [a] -> Maybe a
 findRepeated xs = findRepeated' $ sort xs
@@ -57,34 +55,42 @@ middlewaresParser def = do
   checkSpaces SpaceInMiddlewareError ms
   checkRepeated DuplicatedMiddlewareError ms
 
--- Transform a routing object of type TRoutes to a list, to make easier iterating in next steps
-transformRouting :: String -> TRoutes -> [(String, (String, TMethodValue))]
+-- Transform a routing object of type TRoutes to a list, to make easier iterating in next steps, where RouteName is the entire path to each route
+transformRouting :: String -> TRoutes -> [(RouteName, String, TMethodValue)]
 transformRouting _      Nothing  = []
 transformRouting prefix (Just o) = foldrWithKey (transformRouting' prefix) [] o
 transformRouting' prefix k v xs =
   let methodsList = buildMethodList $ methods v
       subroutes = transformRouting (prefix ++ "/" ++ k) $ routes v
-  in concat [xs, map (prefix ++ "/" ++ k,) methodsList, subroutes]
+  in concat [xs, map (\(m, v) -> (prefix ++ "/" ++ k, m, v)) methodsList, subroutes]
 buildMethodList Nothing  = []
 buildMethodList (Just o) = toList o
 
-getRoute :: (String, (a, TMethodValue)) -> String
-getRoute = fst
+getRoute :: (RouteName, a, TMethodValue) -> String
+getRoute (routeName, _, _) = routeName
 
-getMethod :: (String, (a, TMethodValue)) -> a
-getMethod = fst . snd
+getMethod :: (RouteName, a, TMethodValue) -> a
+getMethod (_, method, _) = method
 
-getMethodValue :: (String, (a, TMethodValue)) -> TMethodValue
-getMethodValue = snd . snd
+getMethodValue :: (RouteName, a, TMethodValue) -> TMethodValue
+getMethodValue (_, _, value) = value
 
-methodOrError s = case s of
+maybeGetMethod :: String -> Maybe Method
+maybeGetMethod s = case s of
   "GET"    -> Just Get
   "POST"   -> Just Post
   "PUT"    -> Just Put
   "DELETE" -> Just Delete
   _        -> Nothing
 
--- routingParser :: Definition -> MErr ()
+makeRoute :: (String, Method, TMethodValue) -> Route
+makeRoute rs = let name   = getRoute rs
+                   method = getMethod rs
+                   mw     = concat $ maybeToList $ middleware $ getMethodValue rs
+                   ctrl   = controller $ getMethodValue rs
+               in R name method mw ctrl
+
+routingParser :: Definition -> MErr Routes
 routingParser def = do
   let mw = concat $ maybeToList $ middlewares def
       rs  = transformRouting "" $ routing def
@@ -93,23 +99,16 @@ routingParser def = do
   rs' <- transformValidMethods rs
   mapM (pure . makeRoute) rs'
     where
-      validateRoutes = mapM_ (throwIfSpace SpaceInRouteError . fst)
+      validateRoutes = mapM_ (throwIfSpace SpaceInRouteError . getRoute)
       validateMiddlewares mw = mapM_ (validateMiddlewares' mw)
       validateMiddlewares' mw r = mapM_ (mapM_ (throwIfInvalidMw mw $ getRoute r)) (middleware $ getMethodValue r)
       throwIfInvalidMw mw r x = when (x `notElem` mw) $ throw $ NonDeclaredMiddlewareError (x ++ " in route " ++ r)
       transformValidMethods = mapM transformValidMethod
       transformValidMethod rs = 
         let m = getMethod rs
-        in case methodOrError m of
-          Just m' -> return (getRoute rs, (m', getMethodValue rs))
-          _      -> throw $ InvalidMethodError (m ++ "in route" ++ getRoute rs)
-
-makeRoute :: (String, (Method, TMethodValue)) -> Route
-makeRoute rs = let name   = getRoute rs
-                   method = getMethod rs 
-                   mw     = concat $ maybeToList $ middleware $ getMethodValue rs
-                   ctrl   = controller $ getMethodValue rs
-               in R name method mw ctrl
+        in case maybeGetMethod m of
+          Just m' -> return (getRoute rs, m', getMethodValue rs)
+          _      -> throw $ InvalidMethodError (m ++ " in route" ++ getRoute rs)
 
 -- [
 --   ("/some",("POST",TMethodValue {controller = "createOne", middleware = Just ["auth","isAdmin"]})),
@@ -117,10 +116,9 @@ makeRoute rs = let name   = getRoute rs
 --   ("/some/help",("GET",TMethodValue {controller = "help", middleware = Nothing}))
 -- ]
 
--- test :: Either String Definition -> MErr Definition
+test :: Either String Definition -> MErr Routes
 test d = do 
   def <- definitionParser d
   modelsParser def
   middlewaresParser def
   routingParser def
-  -- return def
